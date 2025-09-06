@@ -1,0 +1,99 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Theme variables */
+:root {
+  --background-color: #ffffff;
+  --text-color: #333333;
+  --card-bg: #ffffff;
+  --card-text: #333333;
+  --navbar-bg: #f8f9fa;
+  --navbar-text: rgba(0, 0, 0, 0.55);
+  --table-bg: #ffffff;
+  --table-text: #333333;
+  --table-border: #dee2e6;
+  --modal-bg: #ffffff;
+  --modal-text: #333333;
+  --modal-border: #dee2e6;
+}
+
+[data-theme='dark'] {
+  --background-color: #333333;
+  --text-color: #f5f5f5;
+  --card-bg: #444444;
+  --card-text: #f5f5f5;
+  --navbar-bg: #212529;
+  --navbar-text: rgba(255, 255, 255, 0.75);
+  --table-bg: #444444;
+  --table-text: #f5f5f5;
+  --table-border: #666666;
+  --modal-bg: #444444;
+  --modal-text: #f5f5f5;
+  --modal-border: #666666;
+}
+
+/* Apply theme variables */
+body {
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
+.card {
+  background-color: var(--card-bg);
+  color: var(--card-text);
+}
+
+.navbar {
+  background-color: var(--navbar-bg) !important;
+}
+
+.navbar-light .navbar-nav .nav-link {
+  color: var(--navbar-text);
+}
+
+.navbar-light .navbar-brand {
+  color: var(--navbar-text);
+}
+
+/* Table styles for dark theme */
+.table {
+  --bs-table-bg: var(--table-bg);
+  --bs-table-color: var(--table-text);
+  --bs-table-border-color: var(--table-border);
+}
+
+.table th,
+.table td {
+  color: var(--table-text);
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) > * {
+  background-color: var(--table-bg); /* Ensure striped rows also use the theme background */
+}
+
+/* Modal styles for dark theme */
+.modal-content {
+  background-color: var(--modal-bg);
+  color: var(--modal-text);
+  border-color: var(--modal-border);
+}
+
+.modal-header,
+.modal-footer {
+  border-color: var(--modal-border);
+}
+
+.modal-header .btn-close {
+  filter: invert(1) grayscale(100%) brightness(200%); /* Adjust close button for dark theme */
+}
