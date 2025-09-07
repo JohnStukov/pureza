@@ -27,62 +27,46 @@ export interface ProductUpdatePayload {
     stock?: number;
 }
 
+// Helper function to wrap database calls with consistent error handling
+async function handleDatabaseCall<T>(promise: Promise<T>, operationName: string): Promise<T> {
+    try {
+        return await promise;
+    } catch (error: any) {
+        console.error(`Error during ${operationName}:`, error);
+        throw new Error(error.message || `Failed to ${operationName}`);
+    }
+}
+
 export const productService = {
     listProducts: async (): Promise<Product[]> => {
-        try {
-            const response = await databases.listDocuments(
-                DATABASE_ID,
-                PRODUCTS_COLLECTION_ID,
-                [Query.orderDesc('$createdAt')]
-            );
-            return response.documents as unknown as Product[];
-        } catch (error: any) {
-            console.error('Error listing products:', error);
-            throw new Error(error.message || 'Failed to list products');
-        }
+        const response = await handleDatabaseCall(
+            databases.listDocuments(DATABASE_ID, PRODUCTS_COLLECTION_ID, [Query.orderDesc('$createdAt')]),
+            'list products'
+        );
+        return response.documents as unknown as Product[];
     },
 
     createProduct: async (payload: ProductCreatePayload): Promise<Product> => {
-        try {
-            const response = await databases.createDocument(
-                DATABASE_ID,
-                PRODUCTS_COLLECTION_ID,
-                ID.unique(),
-                payload
-            );
-            return response as unknown as Product;
-        } catch (error: any) {
-            console.error('Error creating product:', error);
-            throw new Error(error.message || 'Failed to create product');
-        }
+        const response = await handleDatabaseCall(
+            databases.createDocument(DATABASE_ID, PRODUCTS_COLLECTION_ID, ID.unique(), payload),
+            'create product'
+        );
+        return response as unknown as Product;
     },
 
     updateProduct: async (payload: ProductUpdatePayload): Promise<Product> => {
-        try {
-            const response = await databases.updateDocument(
-                DATABASE_ID,
-                PRODUCTS_COLLECTION_ID,
-                payload.productId,
-                payload
-            );
-            return response as unknown as Product;
-        } catch (error: any) {
-            console.error('Error updating product:', error);
-            throw new Error(error.message || 'Failed to update product');
-        }
+        const { productId, ...updateData } = payload;
+        const response = await handleDatabaseCall(
+            databases.updateDocument(DATABASE_ID, PRODUCTS_COLLECTION_ID, productId, updateData),
+            'update product'
+        );
+        return response as unknown as Product;
     },
 
-    deleteProduct: async (productId: string): Promise<boolean> => {
-        try {
-            await databases.deleteDocument(
-                DATABASE_ID,
-                PRODUCTS_COLLECTION_ID,
-                productId
-            );
-            return true;
-        } catch (error: any) {
-            console.error('Error deleting product:', error);
-            throw new Error(error.message || 'Failed to delete product');
-        }
+    deleteProduct: async (productId: string): Promise<void> => {
+        await handleDatabaseCall(
+            databases.deleteDocument(DATABASE_ID, PRODUCTS_COLLECTION_ID, productId),
+            'delete product'
+        );
     },
 };

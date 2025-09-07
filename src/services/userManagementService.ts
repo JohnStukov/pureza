@@ -2,6 +2,7 @@ import { functions } from '../utils/appwrite';
 import { withRetry } from '../utils/retryLogic';
 import { ID, AppwriteException, Models } from 'appwrite';
 import '../config/debug'; // Import debug config to log environment variables
+import { USER_ACTIONS, TEAM_ACTIONS } from '../constants/actions';
 
 export interface UserData {
   email: string;
@@ -102,15 +103,12 @@ class UserManagementService {
 
   // User Management Methods
   async listUsers(): Promise<ManageUsersResponse<AppwriteUser[]>> {
-    // The executeFunction will return a generic object on success.
-    // This method is responsible for finding the user array within that object.
-    const result = await this.executeFunction<any>({ action: 'list' });
+    const result = await this.executeFunction<any>({ action: USER_ACTIONS.LIST });
 
     if (!result.success) {
       return result; // Propagate the error response
     }
 
-    // Find the array, which might be in result.data or result.data.users
     let usersArray: AppwriteUser[] = [];
     if (Array.isArray(result.data)) {
       usersArray = result.data;
@@ -122,32 +120,32 @@ class UserManagementService {
   }
 
   async createUser(userData: UserData): Promise<ManageUsersResponse<AppwriteUser>> {
-    return this.executeFunction<AppwriteUser>({ action: 'create', data: userData });
+    return this.executeFunction<AppwriteUser>({ action: USER_ACTIONS.CREATE, data: userData });
   }
 
   async updateUser(userId: string, userData: UserUpdateData): Promise<ManageUsersResponse<AppwriteUser>> {
-    return this.executeFunction<AppwriteUser>({ action: 'update', userId, data: userData });
+    return this.executeFunction<AppwriteUser>({ action: USER_ACTIONS.UPDATE, userId, data: userData });
   }
 
   async deleteUser(userId: string): Promise<ManageUsersResponse<{}>> {
-    return this.executeFunction<{}>({ action: 'delete', userId });
+    return this.executeFunction<{}>({ action: USER_ACTIONS.DELETE, userId });
   }
 
   async updateUserStatus(userId: string, status: boolean): Promise<ManageUsersResponse<AppwriteUser>> {
-    return this.executeFunction<AppwriteUser>({ action: 'updateStatus', userId, data: { status } });
+    return this.executeFunction<AppwriteUser>({ action: USER_ACTIONS.UPDATE_STATUS, userId, data: { status } });
   }
 
   async createPasswordRecovery(userId: string): Promise<ManageUsersResponse<{}>> {
-    return this.executeFunction<{}>({ action: 'createPasswordRecovery', userId });
+    return this.executeFunction<{}>({ action: USER_ACTIONS.CREATE_PASSWORD_RECOVERY, userId });
   }
 
   async updateVerification(userId: string): Promise<ManageUsersResponse<AppwriteUser>> {
-    return this.executeFunction<AppwriteUser>({ action: 'updateVerification', userId });
+    return this.executeFunction<AppwriteUser>({ action: USER_ACTIONS.UPDATE_VERIFICATION, userId });
   }
 
   // Team Management Methods
   async listTeams(): Promise<ManageUsersResponse<AppwriteTeam[]>> {
-    const result = await this.executeFunction<any>({ action: 'teamList' });
+    const result = await this.executeFunction<any>({ action: TEAM_ACTIONS.LIST });
 
     if (!result.success) {
       return result;
@@ -164,15 +162,15 @@ class UserManagementService {
   }
 
   async createTeam(teamData: TeamData): Promise<ManageUsersResponse<AppwriteTeam>> {
-    return this.executeFunction<AppwriteTeam>({ action: 'teamCreate', data: teamData });
+    return this.executeFunction<AppwriteTeam>({ action: TEAM_ACTIONS.CREATE, data: teamData });
   }
 
   async updateTeam(teamId: string, teamData: TeamUpdateData): Promise<ManageUsersResponse<AppwriteTeam>> {
-    return this.executeFunction<AppwriteTeam>({ action: 'teamUpdate', teamId, data: teamData });
+    return this.executeFunction<AppwriteTeam>({ action: TEAM_ACTIONS.UPDATE, teamId, data: teamData });
   }
 
   async deleteTeam(teamId: string): Promise<ManageUsersResponse<{}>> {
-    return this.executeFunction<{}>({ action: 'teamDelete', teamId });
+    return this.executeFunction<{}>({ action: TEAM_ACTIONS.DELETE, teamId });
   }
 }
 
