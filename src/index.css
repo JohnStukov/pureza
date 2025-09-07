@@ -16,8 +16,10 @@ code {
 :root {
   --background-color: #ffffff;
   --text-color: #333333;
+  --text-muted: #6c757d;
   --card-bg: #ffffff;
   --card-text: #333333;
+  --card-text-muted: #6c757d;
   --navbar-bg: #f8f9fa;
   --navbar-text: rgba(0, 0, 0, 0.55);
   --table-bg: #ffffff;
@@ -26,44 +28,70 @@ code {
   --modal-bg: #ffffff;
   --modal-text: #333333;
   --modal-border: #dee2e6;
+  --border-color: #dee2e6;
+  --shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
 }
 
 [data-theme='dark'] {
-  --background-color: #333333;
-  --text-color: #f5f5f5;
-  --card-bg: #444444;
-  --card-text: #f5f5f5;
+  --background-color: #1a1a1a;
+  --text-color: #ffffff;
+  --text-muted: #adb5bd;
+  --card-bg: #2d2d2d;
+  --card-text: #ffffff;
+  --card-text-muted: #adb5bd;
   --navbar-bg: #212529;
-  --navbar-text: rgba(255, 255, 255, 0.75);
-  --table-bg: #444444;
-  --table-text: #f5f5f5;
-  --table-border: #666666;
-  --modal-bg: #444444;
-  --modal-text: #f5f5f5;
-  --modal-border: #666666;
+  --navbar-text: rgba(255, 255, 255, 0.85);
+  --table-bg: #2d2d2d;
+  --table-text: #ffffff;
+  --table-border: #495057;
+  --modal-bg: #2d2d2d;
+  --modal-text: #ffffff;
+  --modal-border: #495057;
+  --border-color: #495057;
+  --shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.3);
 }
 
 /* Apply theme variables */
 body {
   background-color: var(--background-color);
   color: var(--text-color);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .card {
   background-color: var(--card-bg);
   color: var(--card-text);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow);
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Text color utilities for dark theme */
+.text-muted {
+  color: var(--text-muted) !important;
+}
+
+.card .text-muted {
+  color: var(--card-text-muted) !important;
 }
 
 .navbar {
   background-color: var(--navbar-bg) !important;
+  transition: background-color 0.3s ease;
 }
 
 .navbar-light .navbar-nav .nav-link {
   color: var(--navbar-text);
+  transition: color 0.3s ease;
 }
 
 .navbar-light .navbar-brand {
   color: var(--navbar-text);
+  transition: color 0.3s ease;
+}
+
+.navbar-light .navbar-nav .nav-link:hover {
+  color: var(--text-color);
 }
 
 /* Table styles for dark theme */
@@ -71,15 +99,23 @@ body {
   --bs-table-bg: var(--table-bg);
   --bs-table-color: var(--table-text);
   --bs-table-border-color: var(--table-border);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .table th,
 .table td {
   color: var(--table-text);
+  border-color: var(--table-border);
+  transition: color 0.3s ease, border-color 0.3s ease;
 }
 
 .table-striped > tbody > tr:nth-of-type(odd) > * {
-  background-color: var(--table-bg); /* Ensure striped rows also use the theme background */
+  background-color: var(--table-bg);
+}
+
+.table-hover > tbody > tr:hover > * {
+  background-color: var(--border-color);
+  color: var(--text-color);
 }
 
 /* Modal styles for dark theme */
@@ -87,13 +123,75 @@ body {
   background-color: var(--modal-bg);
   color: var(--modal-text);
   border-color: var(--modal-border);
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
 
 .modal-header,
 .modal-footer {
   border-color: var(--modal-border);
+  transition: border-color 0.3s ease;
 }
 
 .modal-header .btn-close {
-  filter: invert(1) grayscale(100%) brightness(200%); /* Adjust close button for dark theme */
+  filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+/* Form controls for dark theme */
+.form-control {
+  background-color: var(--card-bg);
+  color: var(--card-text);
+  border-color: var(--border-color);
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+.form-control:focus {
+  background-color: var(--card-bg);
+  color: var(--card-text);
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.form-select {
+  background-color: var(--card-bg);
+  color: var(--card-text);
+  border-color: var(--border-color);
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+.form-select:focus {
+  background-color: var(--card-bg);
+  color: var(--card-text);
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* Alert styles for dark theme */
+.alert {
+  border-color: var(--border-color);
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Button styles for dark theme */
+.btn-outline-secondary {
+  color: var(--text-color);
+  border-color: var(--border-color);
+}
+
+.btn-outline-secondary:hover {
+  background-color: var(--border-color);
+  color: var(--text-color);
+  border-color: var(--border-color);
+}
+
+/* List group for dark theme */
+.list-group-item {
+  background-color: var(--card-bg);
+  color: var(--card-text);
+  border-color: var(--border-color);
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+.list-group-item:hover {
+  background-color: var(--border-color);
+  color: var(--text-color);
 }

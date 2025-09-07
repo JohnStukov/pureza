@@ -1,10 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '../../context/LanguageContext';
 import { functions } from '../../utils/appwrite';
-import { Container, Row, Col, Button, Table, Form, Alert, Badge, Pagination } from 'react-bootstrap';
+import { Container, Row, Col, Button, Table, Form, Alert, Badge } from 'react-bootstrap';
 import { Models } from 'appwrite';
 import { ActionModal, ModalConfig } from './ActionModal';
 import { handleError } from '../../utils/errorHandler';
+import { withRetry } from '../../utils/retryLogic';
+import LoadingSpinner from '../common/LoadingSpinner';
+import { usePagination } from '../../hooks/usePagination';
+import { useDebounce } from '../../hooks/useDebounce';
+import Pagination from '../common/Pagination';
 
 interface UserFormState {
     email: string;
@@ -26,8 +31,11 @@ const UsersSettings = () => {
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
-    const [currentPage, setCurrentPage] = useState(1);
-    const [usersPerPage] = useState(10);
+    const [sortBy, setSortBy] = useState<'name' | 'email' | 'status' | 'createdAt'>('createdAt');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+    // Debounce search term
+    const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
     const [modalState, setModalState] = useState<ModalState>({ type: null, user: null });
     const [formState, setFormState] = useState<UserFormState>({ email: '', password: '', name: '' });
@@ -36,10 +44,13 @@ const UsersSettings = () => {
         setLoading(true);
         setError(null);
         try {
-            const response = await functions.createExecution(
-                process.env.REACT_APP_APPWRITE_MANAGE_USERS_FUNCTION_ID!,
-                JSON.stringify({ action: 'list' }),
-                false
+            const response = await withRetry(
+                () => functions.createExecution(
+                    process.env.REACT_APP_APPWRITE_MANAGE_USERS_FUNCTION_ID!,
+                    JSON.stringify({ action: 'list' }),
+                    false
+                ),
+                { maxRetries: 2, delay: 1000 }
             );
             const result = JSON.parse(response.responseBody);
             if (result.error) throw new Error(result.error);
@@ -87,10 +98,13 @@ const UsersSettings = () => {
         setMessage(null);
 
         try {
-            const response = await functions.createExecution(
-                process.env.REACT_APP_APPWRITE_MANAGE_USERS_FUNCTION_ID!,
-                JSON.stringify({ ...payload, action }),
-                false
+            const response = await withRetry(
+                () => functions.createExecution(
+                    process.env.REACT_APP_APPWRITE_MANAGE_USERS_FUNCTION_ID!,
+                    JSON.stringify({ ...payload, action }),
+                    false
+                ),
+                { maxRetries: 2, delay: 1000 }
             );
             const result = JSON.parse(response.responseBody);
             if (result.error) throw new Error(result.error);
@@ -103,15 +117,59 @@ const UsersSettings = () => {
         }
     };
 
-    const filteredUsers = usersList.filter(user =>
-        user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // Filter and sort users
+    const filteredAndSortedUsers = useMemo(() => {
+        let filtered = usersList;
 
-    const indexOfLastUser = currentPage * usersPerPage;
-    const indexOfFirstUser = indexOfLastUser - usersPerPage;
-    const currentUsers = filteredUsers.slice(indexOfFirstUser, indexOfLastUser);
-    const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
+        // Filter by search term
+        if (debouncedSearchTerm) {
+            filtered = filtered.filter(user =>
+                user.name?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+                user.email.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
+            );
+        }
+
+        // Sort users
+        filtered.sort((a, b) => {
+            let aValue: any = a[sortBy as keyof typeof a];
+            let bValue: any = b[sortBy as keyof typeof b];
+
+            if (sortBy === 'createdAt') {
+                aValue = new Date(a.$createdAt).getTime();
+                bValue = new Date(b.$createdAt).getTime();
+            } else if (sortBy === 'status') {
+                aValue = a.status ? 1 : 0;
+                bValue = b.status ? 1 : 0;
+            }
+
+            if (typeof aValue === 'string') {
+                aValue = aValue.toLowerCase();
+                bValue = bValue.toLowerCase();
+            }
+
+            if (sortOrder === 'asc') {
+                return aValue > bValue ? 1 : -1;
+            } else {
+                return aValue < bValue ? 1 : -1;
+            }
+        });
+
+        return filtered;
+    }, [usersList, debouncedSearchTerm, sortBy, sortOrder]);
+
+    // Pagination
+    const {
+        currentPage,
+        totalPages,
+        itemsPerPage,
+        paginatedItems: currentUsers,
+        goToPage,
+        setItemsPerPage,
+        paginationInfo
+    } = usePagination(filteredAndSortedUsers, {
+        totalItems: filteredAndSortedUsers.length,
+        itemsPerPage: 10
+    });
 
     const { type, user } = modalState;
 
@@ -192,7 +250,7 @@ const UsersSettings = () => {
                 <Col>
                     <h3>{t("user_list")}</h3>
                     <Row className="mb-3">
-                        <Col>
+                        <Col md={4}>
                             <Form.Control
                                 type="text"
                                 placeholder={t("search_users_placeholder")}
@@ -200,18 +258,49 @@ const UsersSettings = () => {
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
                         </Col>
-                        <Col xs="auto">
-                            <Button variant="primary" onClick={() => openModal('create')}>
+                        <Col md={2}>
+                            <Form.Select
+                                value={sortBy}
+                                onChange={(e) => setSortBy(e.target.value as any)}
+                            >
+                                <option value="name">{t("sort_by_name")}</option>
+                                <option value="email">{t("sort_by_email")}</option>
+                                <option value="status">{t("sort_by_status")}</option>
+                                <option value="createdAt">{t("sort_by_date")}</option>
+                            </Form.Select>
+                        </Col>
+                        <Col md={2}>
+                            <Form.Select
+                                value={sortOrder}
+                                onChange={(e) => setSortOrder(e.target.value as any)}
+                            >
+                                <option value="asc">{t("ascending")}</option>
+                                <option value="desc">{t("descending")}</option>
+                            </Form.Select>
+                        </Col>
+                        <Col md={2}>
+                            <Form.Select
+                                value={itemsPerPage}
+                                onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                            >
+                                <option value={5}>5 {t("per_page")}</option>
+                                <option value={10}>10 {t("per_page")}</option>
+                                <option value={25}>25 {t("per_page")}</option>
+                                <option value={50}>50 {t("per_page")}</option>
+                            </Form.Select>
+                        </Col>
+                        <Col md={2}>
+                            <Button variant="primary" onClick={() => openModal('create')} className="w-100">
                                 {t("create_user")}
                             </Button>
                         </Col>
                     </Row>
 
-                    {loading && <p>Cargando usuarios...</p>}
+                    {loading && <LoadingSpinner text="Cargando usuarios..." centered />}
                     {error && <Alert variant="danger">{error}</Alert>}
                     {message && <Alert variant="success">{message}</Alert>}
 
-                    {!loading && filteredUsers.length > 0 ? (
+                    {!loading && filteredAndSortedUsers.length > 0 ? (
                         <Table striped bordered hover responsive>
                             <thead>
                                 <tr>
@@ -255,16 +344,35 @@ const UsersSettings = () => {
                             </tbody>
                         </Table>
                     ) : (
-                        !loading && <p>No hay usuarios registrados.</p>
+                        !loading && (
+                            <Alert variant="info">
+                                {searchTerm ? t("no_users_found_search") : t("no_users_found")}
+                            </Alert>
+                        )
                     )}
 
-                    <Pagination className="justify-content-center mt-3">
-                        {Array.from({ length: Math.ceil(filteredUsers.length / usersPerPage) }, (_, i) => i + 1).map(number => (
-                            <Pagination.Item key={number} active={number === currentPage} onClick={() => paginate(number)}>
-                                {number}
-                            </Pagination.Item>
-                        ))}
-                    </Pagination>
+                    {/* Results info */}
+                    <Row className="mb-2">
+                        <Col>
+                            <small style={{ color: 'var(--text-muted)' }}>
+                                {t("showing_results", {
+                                    start: paginationInfo.startIndex,
+                                    end: paginationInfo.endIndex,
+                                    total: filteredAndSortedUsers.length
+                                })}
+                            </small>
+                        </Col>
+                    </Row>
+
+                    {/* Pagination */}
+                    {totalPages > 1 && (
+                        <Pagination
+                            currentPage={currentPage}
+                            totalPages={totalPages}
+                            onPageChange={goToPage}
+                            className="mt-3"
+                        />
+                    )}
 
                     <ActionModal
                         show={!!type}

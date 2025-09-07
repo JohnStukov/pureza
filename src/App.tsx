@@ -1,31 +1,42 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import './App.css';
-import Login from './components/Login';
-import Signup from './components/Signup';
-import Dashboard from './components/Dashboard';
-import ProductManagement from './components/settings/ProductManagement';
-import Settings from './components/Settings';
-import UsersSettings from './components/settings/UsersSettings';
-import TeamsSettings from './components/settings/TeamsSettings';
-import LanguageSettings from './components/settings/LanguageSettings';
-import ThemeSettings from './components/settings/ThemeSettings';
-import AppNavbar from './components/Navbar';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { ThemeProvider } from './context/ThemeContext';
+import LoadingSpinner from './components/common/LoadingSpinner';
 
-const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
+// Lazy load components
+const Login = lazy(() => import('./components/Login'));
+const Signup = lazy(() => import('./components/Signup'));
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const Settings = lazy(() => import('./components/Settings'));
+const AppNavbar = lazy(() => import('./components/Navbar'));
+
+// Lazy load settings components
+const ProductManagement = lazy(() => import('./components/settings/ProductManagement'));
+const UsersSettings = lazy(() => import('./components/settings/UsersSettings'));
+const TeamsSettings = lazy(() => import('./components/settings/TeamsSettings'));
+const LanguageSettings = lazy(() => import('./components/settings/LanguageSettings'));
+const ThemeSettings = lazy(() => import('./components/settings/ThemeSettings'));
+
+const PrivateRoute = React.memo(({ children }: { children: React.ReactNode }) => {
   const { currentUser } = useAuth();
   return currentUser ? <>{children}</> : <Navigate to="/login" />;
-};
+});
 
-const AuthenticatedLayout = ({ children }: { children: React.ReactNode }) => (
+const AuthenticatedLayout = React.memo(({ children }: { children: React.ReactNode }) => (
   <>
-    <AppNavbar />
+    <Suspense fallback={<LoadingSpinner text="Loading navigation..." centered />}>
+      <AppNavbar />
+    </Suspense>
     {children}
   </>
-);
+));
+
+const PageLoader = React.memo(() => (
+  <LoadingSpinner text="Loading page..." centered />
+));
 
 function App() {
   return (
@@ -33,48 +44,75 @@ function App() {
       <AuthProvider>
         <LanguageProvider>
           <ThemeProvider>
-            <Routes>
-                      <Route path="/signup" element={<Signup />} />
-          <Route path="/login" element={<Login />} />
-          
-          <Route 
-            path="/dashboard" 
-            element={
-              <PrivateRoute>
-                <AuthenticatedLayout>
-                  <Dashboard />
-                </AuthenticatedLayout>
-              </PrivateRoute>
-            }
-          />
-            <Route 
-              path="/settings" 
-              element={
-                <PrivateRoute>
-                  <AuthenticatedLayout>
-                    <Settings />
-                  </AuthenticatedLayout>
-                </PrivateRoute>
-              }
-            >
-              <Route path="users" element={<UsersSettings />} />
-              <Route path="teams" element={<TeamsSettings />} />
-              <Route path="language" element={<LanguageSettings />} />
-              <Route path="theme" element={<ThemeSettings />} />
-              <Route path="products" element={<ProductManagement />} />
-              {/* Add more nested settings routes here */}
-            </Route>
-            <Route 
-              path="/" 
-              element={
-                <PrivateRoute>
-                  <AuthenticatedLayout>
-                    <Dashboard />
-                  </AuthenticatedLayout>
-                </PrivateRoute>
-              }
-            />
-          </Routes>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/signup" element={<Signup />} />
+                <Route path="/login" element={<Login />} />
+                
+                <Route 
+                  path="/dashboard" 
+                  element={
+                    <PrivateRoute>
+                      <AuthenticatedLayout>
+                        <Suspense fallback={<PageLoader />}>
+                          <Dashboard />
+                        </Suspense>
+                      </AuthenticatedLayout>
+                    </PrivateRoute>
+                  }
+                />
+                <Route 
+                  path="/settings" 
+                  element={
+                    <PrivateRoute>
+                      <AuthenticatedLayout>
+                        <Suspense fallback={<PageLoader />}>
+                          <Settings />
+                        </Suspense>
+                      </AuthenticatedLayout>
+                    </PrivateRoute>
+                  }
+                >
+                  <Route path="users" element={
+                    <Suspense fallback={<PageLoader />}>
+                      <UsersSettings />
+                    </Suspense>
+                  } />
+                  <Route path="teams" element={
+                    <Suspense fallback={<PageLoader />}>
+                      <TeamsSettings />
+                    </Suspense>
+                  } />
+                  <Route path="language" element={
+                    <Suspense fallback={<PageLoader />}>
+                      <LanguageSettings />
+                    </Suspense>
+                  } />
+                  <Route path="theme" element={
+                    <Suspense fallback={<PageLoader />}>
+                      <ThemeSettings />
+                    </Suspense>
+                  } />
+                  <Route path="products" element={
+                    <Suspense fallback={<PageLoader />}>
+                      <ProductManagement />
+                    </Suspense>
+                  } />
+                </Route>
+                <Route 
+                  path="/" 
+                  element={
+                    <PrivateRoute>
+                      <AuthenticatedLayout>
+                        <Suspense fallback={<PageLoader />}>
+                          <Dashboard />
+                        </Suspense>
+                      </AuthenticatedLayout>
+                    </PrivateRoute>
+                  }
+                />
+              </Routes>
+            </Suspense>
           </ThemeProvider>
         </LanguageProvider>
       </AuthProvider>
