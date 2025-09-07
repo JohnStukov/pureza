@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLanguage } from '../../context/LanguageContext';
-import { functions } from '../../utils/appwrite';
 import { Container, Row, Col, Button, Table, Form, Alert, Badge } from 'react-bootstrap';
-import { Models } from 'appwrite';
 import { ActionModal, ModalConfig } from './ActionModal';
 import { handleError } from '../../utils/errorHandler';
-import { withRetry } from '../../utils/retryLogic';
+import { userManagementService, AppwriteUser } from '../../services/userManagementService';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { usePagination } from '../../hooks/usePagination';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -21,12 +19,12 @@ export type UserModalType = 'create' | 'update' | 'delete' | 'updateStatus' | 'c
 
 export interface ModalState {
     type: UserModalType | null;
-    user: Models.User<Models.Preferences> | null;
+    user: AppwriteUser | null;
 }
 
 const UsersSettings = () => {
     const { t } = useLanguage();
-    const [usersList, setUsersList] = useState<Models.User<Models.Preferences>[]>([]);
+    const [usersList, setUsersList] = useState<AppwriteUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<string | null>(null);
@@ -38,23 +36,19 @@ const UsersSettings = () => {
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
     const [modalState, setModalState] = useState<ModalState>({ type: null, user: null });
-    const [formState, setFormState] = useState<UserFormState>({ email: '', password: '', name: '' });
+    const [formState, setFormState] = useState<UserFormState>({ email: '', name: '' });
+    const [password, setPassword] = useState('');
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            const response = await withRetry(
-                () => functions.createExecution(
-                    process.env.REACT_APP_APPWRITE_MANAGE_USERS_FUNCTION_ID!,
-                    JSON.stringify({ action: 'list' }),
-                    false
-                ),
-                { maxRetries: 2, delay: 1000 }
-            );
-            const result = JSON.parse(response.responseBody);
-            if (result.error) throw new Error(result.error);
-            setUsersList(Array.isArray(result.users) ? result.users : []);
+            const result = await userManagementService.listUsers();
+            if (result.success) {
+                setUsersList(Array.isArray(result.data) ? result.data : []);
+            } else {
+                setError(result.error || t("error_loading_users"));
+            }
         } catch (err: any) {
             setError(handleError(err, t));
         } finally {
@@ -67,21 +61,28 @@ const UsersSettings = () => {
     }, [fetchUsers]);
 
     const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setFormState({ ...formState, [e.target.id]: e.target.value });
+        if (e.target.id === 'password') {
+            setPassword(e.target.value);
+        } else {
+            setFormState({ ...formState, [e.target.id]: e.target.value });
+        }
     };
 
-    const openModal = (type: UserModalType, user: Models.User<Models.Preferences> | null = null) => {
+    const openModal = (type: UserModalType, user: AppwriteUser | null = null) => {
         setModalState({ type, user });
         if (type === 'create') {
-            setFormState({ email: '', password: '', name: '' });
+            setFormState({ email: '', name: '' });
+            setPassword('');
         } else if (type === 'update' && user) {
             setFormState({ email: user.email, name: user.name || '' });
+            setPassword('');
         }
     };
 
     const closeModal = () => {
         setModalState({ type: null, user: null });
-        setFormState({ email: '', password: '', name: '' });
+        setFormState({ email: '', name: '' });
+        setPassword('');
     };
 
     const handleConfirmAction = async (action: UserModalType, payload?: any) => {
@@ -98,20 +99,37 @@ const UsersSettings = () => {
         setMessage(null);
 
         try {
-            const response = await withRetry(
-                () => functions.createExecution(
-                    process.env.REACT_APP_APPWRITE_MANAGE_USERS_FUNCTION_ID!,
-                    JSON.stringify({ ...payload, action }),
-                    false
-                ),
-                { maxRetries: 2, delay: 1000 }
-            );
-            const result = JSON.parse(response.responseBody);
-            if (result.error) throw new Error(result.error);
-            
-            setMessage(actionMap[action].success);
-            fetchUsers();
-            closeModal();
+            let result;
+            switch (action) {
+                case 'create':
+                    result = await userManagementService.createUser(payload.data);
+                    break;
+                case 'update':
+                    result = await userManagementService.updateUser(payload.userId, payload.data);
+                    break;
+                case 'delete':
+                    result = await userManagementService.deleteUser(payload.userId);
+                    break;
+                case 'updateStatus':
+                    result = await userManagementService.updateUserStatus(payload.userId, payload.data.status);
+                    break;
+                case 'createPasswordRecovery':
+                    result = await userManagementService.createPasswordRecovery(payload.userId);
+                    break;
+                case 'updateVerification':
+                    result = await userManagementService.updateVerification(payload.userId);
+                    break;
+                default:
+                    throw new Error('Unknown action');
+            }
+
+            if (result.success) {
+                setMessage(actionMap[action].success);
+                fetchUsers();
+                closeModal();
+            } else {
+                setError(result.error || actionMap[action].error);
+            }
         } catch (err: any) {
             setError(handleError(err, t));
         }
@@ -184,7 +202,7 @@ const UsersSettings = () => {
                     </Form.Group>
                     <Form.Group className="mb-3" controlId="password">
                         <Form.Label>{t("password")}</Form.Label>
-                        <Form.Control type="password" value={formState.password} onChange={handleFormChange} required />
+                        <Form.Control type="password" value={password} onChange={handleFormChange} required />
                     </Form.Group>
                     <Form.Group className="mb-3" controlId="name">
                         <Form.Label>{t("name")}</Form.Label>
@@ -194,9 +212,9 @@ const UsersSettings = () => {
             ),
             confirmText: t("save"),
             confirmVariant: "primary",
-            handler: () => handleConfirmAction('create', { data: formState }),
+            handler: () => handleConfirmAction('create', { data: { ...formState, password } }),
         },
-                update: {
+        update: {
             title: t("edit_user"),
             body: (
                 <Form>

@@ -20,6 +20,9 @@ const TeamsSettings = lazy(() => import('./components/settings/TeamsSettings'));
 const LanguageSettings = lazy(() => import('./components/settings/LanguageSettings'));
 const ThemeSettings = lazy(() => import('./components/settings/ThemeSettings'));
 
+// Debug component
+const UserDebug = lazy(() => import('./components/debug/UserDebug'));
+
 const PrivateRoute = React.memo(({ children }: { children: React.ReactNode }) => {
   const { currentUser } = useAuth();
   return currentUser ? <>{children}</> : <Navigate to="/login" />;
@@ -96,6 +99,11 @@ function App() {
                   <Route path="products" element={
                     <Suspense fallback={<PageLoader />}>
                       <ProductManagement />
+                    </Suspense>
+                  } />
+                  <Route path="debug" element={
+                    <Suspense fallback={<PageLoader />}>
+                      <UserDebug />
                     </Suspense>
                   } />
                 </Route>
