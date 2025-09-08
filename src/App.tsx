@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { ThemeProvider } from './context/ThemeContext';
 import LoadingSpinner from './components/common/LoadingSpinner';
+import { Toaster } from 'react-hot-toast';
 
 // Lazy load components
 const Login = lazy(() => import('./components/Login'));
@@ -47,6 +48,7 @@ function App() {
       <AuthProvider>
         <LanguageProvider>
           <ThemeProvider>
+            <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
             <Suspense fallback={<PageLoader />}>
               <Routes>
                 <Route path="/signup" element={<Signup />} />

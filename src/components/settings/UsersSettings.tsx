@@ -8,6 +8,7 @@ import LoadingSpinner from '../common/LoadingSpinner';
 import { usePagination } from '../../hooks/usePagination';
 import { useDebounce } from '../../hooks/useDebounce';
 import Pagination from '../common/Pagination';
+import toast from 'react-hot-toast';
 
 interface UserFormState {
     email: string;
@@ -26,8 +27,6 @@ const UsersSettings = () => {
     const { t } = useLanguage();
     const [usersList, setUsersList] = useState<AppwriteUser[]>([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [message, setMessage] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [sortBy, setSortBy] = useState<'name' | 'email' | 'status' | 'createdAt'>('createdAt');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -41,16 +40,14 @@ const UsersSettings = () => {
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
-        setError(null);
         try {
             const result = await userManagementService.listUsers();
-            if (result.success) {
-                setUsersList(Array.isArray(result.data) ? result.data : []);
-            } else {
-                setError(result.error || t("error_loading_users"));
+            if (!result.success) {
+                toast.error(result.error || t("error_loading_users"));
             }
+            setUsersList(Array.isArray(result.data) ? result.data : []);
         } catch (err: any) {
-            setError(handleError(err, t));
+            toast.error(handleError(err, t));
         } finally {
             setLoading(false);
         }
@@ -85,7 +82,62 @@ const UsersSettings = () => {
         setPassword('');
     };
 
+    const handleDeleteUser = async (userId: string) => {
+        const originalUsers = usersList;
+        setUsersList(currentUsers => currentUsers.filter(u => u.$id !== userId));
+        closeModal();
+        toast.success(t("user_deleted_success"));
+
+        try {
+            const result = await userManagementService.deleteUser(userId);
+            if (!result.success) {
+                toast.error(result.error || t("error_deleting_user"));
+                setUsersList(originalUsers);
+            }
+        } catch (err: any) {
+            toast.error(handleError(err, t));
+            setUsersList(originalUsers);
+        }
+    };
+
+    const handleUpdateUserStatus = async (userId: string, currentStatus: boolean) => {
+        const originalUsers = [...usersList];
+        const newStatus = !currentStatus;
+
+        // Optimistic UI update
+        setUsersList(currentUsers =>
+            currentUsers.map(u => (u.$id === userId ? { ...u, status: newStatus } : u))
+        );
+        closeModal();
+        toast.success(t("user_status_updated"));
+
+        try {
+            const result = await userManagementService.updateUserStatus(userId, newStatus);
+            if (!result.success) {
+                // Revert on failure
+                toast.error(result.error || t("error_updating_status"));
+                setUsersList(originalUsers);
+            }
+        } catch (err: any) {
+            // Revert on any exception
+            toast.error(handleError(err, t));
+            setUsersList(originalUsers);
+        }
+    };
+
     const handleConfirmAction = async (action: UserModalType, payload?: any) => {
+        if (action === 'delete') {
+            if (payload.userId) handleDeleteUser(payload.userId);
+            return;
+        }
+
+        if (action === 'updateStatus') {
+            if (payload.userId !== undefined && payload.currentStatus !== undefined) {
+                handleUpdateUserStatus(payload.userId, payload.currentStatus);
+            }
+            return;
+        }
+
         const actionMap: { [key in UserModalType]: { success: string; error: string } } = {
             create: { success: t("user_created_success"), error: t("error_creating_user") },
             update: { success: t("user_updated_success"), error: t("error_updating_user") },
@@ -94,9 +146,6 @@ const UsersSettings = () => {
             createPasswordRecovery: { success: t("recovery_sent"), error: t("error_sending_recovery") },
             updateVerification: { success: t("user_verified"), error: t("error_verifying_user") },
         };
-
-        setError(null);
-        setMessage(null);
 
         try {
             let result;
@@ -107,31 +156,23 @@ const UsersSettings = () => {
                 case 'update':
                     result = await userManagementService.updateUser(payload.userId, payload.data);
                     break;
-                case 'delete':
-                    result = await userManagementService.deleteUser(payload.userId);
-                    break;
-                case 'updateStatus':
-                    result = await userManagementService.updateUserStatus(payload.userId, payload.data.status);
-                    break;
                 case 'createPasswordRecovery':
                     result = await userManagementService.createPasswordRecovery(payload.userId);
                     break;
                 case 'updateVerification':
                     result = await userManagementService.updateVerification(payload.userId);
                     break;
-                default:
-                    throw new Error('Unknown action');
             }
 
-            if (result.success) {
-                setMessage(actionMap[action].success);
-                fetchUsers();
+            if (result && result.success) {
+                toast.success(actionMap[action].success);
+                fetchUsers(); // Refresh list for create/update actions
                 closeModal();
-            } else {
-                setError(result.error || actionMap[action].error);
+            } else if (result) {
+                toast.error(result.error || actionMap[action].error);
             }
         } catch (err: any) {
-            setError(handleError(err, t));
+            toast.error(handleError(err, t));
         }
     };
 
@@ -239,12 +280,12 @@ const UsersSettings = () => {
             confirmVariant: "danger",
             handler: () => handleConfirmAction('delete', { userId: user?.$id }),
         },
-                updateStatus: {
+        updateStatus: {
             title: user?.status ? t("disable_user") : t("enable_user"),
             body: <p>{user?.status ? t("confirm_disable") : t("confirm_enable")} <strong>{user?.email}</strong></p>,
             confirmText: user?.status ? t("disable_user") : t("enable_user"),
             confirmVariant: user?.status ? "danger" : "success",
-            handler: () => handleConfirmAction('updateStatus', { userId: user?.$id, data: { status: !user?.status } }),
+            handler: () => handleConfirmAction('updateStatus', { userId: user?.$id, currentStatus: user?.status }),
         },
         createPasswordRecovery: {
             title: t("send_recovery"),
@@ -315,8 +356,6 @@ const UsersSettings = () => {
                     </Row>
 
                     {loading && <LoadingSpinner text="Cargando usuarios..." centered />}
-                    {error && <Alert variant="danger">{error}</Alert>}
-                    {message && <Alert variant="success">{message}</Alert>}
 
                     {!loading && filteredAndSortedUsers.length > 0 ? (
                         <Table striped bordered hover responsive>

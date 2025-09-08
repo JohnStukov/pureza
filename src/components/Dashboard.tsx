@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Container, Row, Col, Alert } from 'react-bootstrap';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Container, Row, Col } from 'react-bootstrap';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
-import { productService } from '../services/productService';
-import { functions } from '../utils/appwrite';
-import { withRetry } from '../utils/retryLogic';
+import { productService, Product } from '../services/productService';
+import { userManagementService, AppwriteUser, AppwriteTeam } from '../services/userManagementService';
 import { handleError } from '../utils/errorHandler';
 import LoadingSpinner from './common/LoadingSpinner';
 import StatsCard from './dashboard/StatsCard';
 import RecentActivity from './dashboard/RecentActivity';
 import QuickActions from './dashboard/QuickActions';
+import toast from 'react-hot-toast';
 
 interface DashboardStats {
   totalUsers: number;
@@ -29,53 +29,46 @@ interface ActivityItem {
 const Dashboard = () => {
     const { t } = useLanguage();
     const { currentUser } = useAuth();
-    const [stats, setStats] = useState<DashboardStats>({
-        totalUsers: 0,
-        totalProducts: 0,
-        totalTeams: 0,
-        activeUsers: 0
-    });
+    const [stats, setStats] = useState<DashboardStats>({ totalUsers: 0, totalProducts: 0, totalTeams: 0, activeUsers: 0 });
     const [activities, setActivities] = useState<ActivityItem[]>([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
 
-    const fetchDashboardData = async () => {
+    const fetchDashboardData = useCallback(async () => {
         setLoading(true);
-        setError(null);
-
         try {
-            // Fetch users data
-            const usersResponse = await withRetry(
-                () => functions.createExecution(
-                    process.env.REACT_APP_APPWRITE_MANAGE_USERS_FUNCTION_ID!,
-                    JSON.stringify({ action: 'list' }),
-                    false
-                ),
-                { maxRetries: 2, delay: 1000 }
-            );
-            const usersResult = JSON.parse(usersResponse.responseBody);
-            const users = Array.isArray(usersResult.users) ? usersResult.users : [];
+            const results = await Promise.allSettled([
+                userManagementService.listUsers(),
+                productService.listProducts(),
+                userManagementService.listTeams(),
+            ]);
 
-            // Fetch products data
-            const products = await withRetry(
-                () => productService.listProducts(),
-                { maxRetries: 2, delay: 1000 }
-            );
+            const [usersResult, productsResult, teamsResult] = results;
 
-            // Fetch teams data
-            const teamsResponse = await withRetry(
-                () => functions.createExecution(
-                    process.env.REACT_APP_APPWRITE_MANAGE_USERS_FUNCTION_ID!,
-                    JSON.stringify({ action: 'teamList' }),
-                    false
-                ),
-                { maxRetries: 2, delay: 1000 }
-            );
-            const teamsResult = JSON.parse(teamsResponse.responseBody);
-            const teams = Array.isArray(teamsResult.teams) ? teamsResult.teams : [];
+            let users: AppwriteUser[] = [];
+            if (usersResult.status === 'fulfilled' && usersResult.value.success) {
+                users = usersResult.value.data || [];
+            } else if (usersResult.status === 'rejected' || (usersResult.status === 'fulfilled' && !usersResult.value.success)) {
+                toast.error(t('error_loading_users'));
+                console.error("User fetch error:", usersResult.status === 'fulfilled' ? usersResult.value.error : usersResult.reason);
+            }
 
-            // Calculate stats
-            const activeUsers = users.filter((user: any) => user.status).length;
+            let products: Product[] = [];
+            if (productsResult.status === 'fulfilled') {
+                products = productsResult.value || [];
+            } else {
+                toast.error(t('error_loading_products'));
+                console.error("Product fetch error:", productsResult.reason);
+            }
+
+            let teams: AppwriteTeam[] = [];
+            if (teamsResult.status === 'fulfilled' && teamsResult.value.success) {
+                teams = teamsResult.value.data || [];
+            } else if (teamsResult.status === 'rejected' || (teamsResult.status === 'fulfilled' && !teamsResult.value.success)) {
+                toast.error(t('error_loading_teams'));
+                console.error("Team fetch error:", teamsResult.status === 'fulfilled' ? teamsResult.value.error : teamsResult.reason);
+            }
+
+            const activeUsers = users.filter((user) => user.status).length;
             
             setStats({
                 totalUsers: users.length,
@@ -84,42 +77,22 @@ const Dashboard = () => {
                 activeUsers
             });
 
-            // Generate mock recent activities (in a real app, this would come from an API)
+            // Mock activities can remain as they are
             const mockActivities: ActivityItem[] = [
-                {
-                    id: '1',
-                    type: 'user_created',
-                    description: t('new_user_registered'),
-                    timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-                    user: 'Admin'
-                },
-                {
-                    id: '2',
-                    type: 'product_created',
-                    description: t('new_product_added'),
-                    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-                    user: 'Admin'
-                },
-                {
-                    id: '3',
-                    type: 'team_created',
-                    description: t('new_team_created'),
-                    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
-                    user: 'Admin'
-                }
+                { id: '1', type: 'user_created', description: t('new_user_registered'), timestamp: new Date().toISOString(), user: 'Admin' },
             ];
             setActivities(mockActivities);
 
         } catch (err: any) {
-            setError(handleError(err, t));
+            toast.error(handleError(err, t));
         } finally {
             setLoading(false);
         }
-    };
+    }, [t]);
 
     useEffect(() => {
         fetchDashboardData();
-    }, []);
+    }, [fetchDashboardData]);
 
     const statsCards = useMemo(() => [
         {
@@ -153,11 +126,7 @@ const Dashboard = () => {
     ], [stats, t]);
 
     if (loading) {
-        return (
-            <Container fluid className="mt-4">
-                <LoadingSpinner text={t('loading_dashboard')} centered />
-            </Container>
-        );
+        return <LoadingSpinner text={t('loading_dashboard')} centered />;
     }
 
     return (
@@ -171,15 +140,6 @@ const Dashboard = () => {
                 </Col>
             </Row>
 
-            {error && (
-                <Row className="mb-4">
-                    <Col>
-                        <Alert variant="danger">{error}</Alert>
-                    </Col>
-                </Row>
-            )}
-
-            {/* Stats Cards */}
             <Row className="mb-4">
                 {statsCards.map((stat, index) => (
                     <Col lg={3} md={6} className="mb-3" key={index}>
@@ -188,7 +148,6 @@ const Dashboard = () => {
                 ))}
             </Row>
 
-            {/* Dashboard Content */}
             <Row>
                 <Col lg={8} className="mb-4">
                     <RecentActivity activities={activities} />
