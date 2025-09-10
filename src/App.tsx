@@ -1,5 +1,7 @@
 import React, { Suspense, lazy } from 'react';
 import './App.css';
+import './styles/accessibility.css';
+import './styles/dark-mode.css';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
