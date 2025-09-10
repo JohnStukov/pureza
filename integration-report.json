@@ -1,0 +1,42 @@
+{
+  "timestamp": "2025-09-10T01:47:45.230Z",
+  "environment": {
+    "configured": [],
+    "missing": [
+      "REACT_APP_APPWRITE_ENDPOINT",
+      "REACT_APP_APPWRITE_PROJECT_ID",
+      "REACT_APP_APPWRITE_MANAGE_USERS_FUNCTION_ID",
+      "REACT_APP_APPWRITE_DATABASE_ID",
+      "REACT_APP_APPWRITE_PRODUCTS_COLLECTION_ID"
+    ],
+    "total": 5
+  },
+  "tests": {
+    "passed": false,
+    "status": "FAILED"
+  },
+  "recommendations": [
+    {
+      "type": "configuration",
+      "priority": "high",
+      "message": "Configurar variables de entorno faltantes",
+      "details": [
+        "REACT_APP_APPWRITE_ENDPOINT",
+        "REACT_APP_APPWRITE_PROJECT_ID",
+        "REACT_APP_APPWRITE_MANAGE_USERS_FUNCTION_ID",
+        "REACT_APP_APPWRITE_DATABASE_ID",
+        "REACT_APP_APPWRITE_PRODUCTS_COLLECTION_ID"
+      ]
+    },
+    {
+      "type": "connectivity",
+      "priority": "high",
+      "message": "Verificar conectividad con Appwrite y función manage-users",
+      "details": [
+        "Verificar que la función esté desplegada en Appwrite",
+        "Verificar permisos de la API key",
+        "Verificar configuración de red"
+      ]
+    }
+  ]
+}

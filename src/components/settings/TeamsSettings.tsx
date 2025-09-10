@@ -6,6 +6,7 @@ import { ActionModal, ModalConfig } from './ActionModal';
 import { handleError } from '../../utils/errorHandler';
 import toast from 'react-hot-toast';
 import LoadingSpinner from '../common/LoadingSpinner';
+import TeamMembers from './TeamMembers';
 
 interface Team {
     $id: string;
@@ -13,7 +14,7 @@ interface Team {
     total: number;
 }
 
-export type TeamModalType = 'create' | 'edit' | 'delete';
+export type TeamModalType = 'create' | 'edit' | 'delete' | 'members';
 
 export interface ModalState {
     type: TeamModalType | null;
@@ -31,12 +32,8 @@ const TeamsSettings = () => {
     const fetchTeams = useCallback(async () => {
         setLoading(true);
         try {
-            const response = await teamService.listTeams();
-            if (response.success) {
-                setTeams(response.data || []);
-            } else {
-                toast.error(response.error || t('error_loading_teams'));
-            }
+            const teams = await teamService.listTeams();
+            setTeams(teams);
         } catch (err: any) {
             toast.error(handleError(err, t));
         } finally {
@@ -84,11 +81,7 @@ const TeamsSettings = () => {
         toast.success(t('team_updated_success'));
 
         try {
-            const result = await teamService.updateTeam({ teamId, name: teamName });
-            if (!result.success) {
-                setTeams(originalTeams);
-                toast.error(result.error || t('error_updating_team'));
-            }
+            await teamService.updateTeam({ teamId, name: teamName });
         } catch (err) {
             setTeams(originalTeams);
             toast.error(handleError(err, t));
@@ -102,11 +95,7 @@ const TeamsSettings = () => {
         toast.success(t('team_deleted_success'));
 
         try {
-            const result = await teamService.deleteTeam({ teamId });
-            if (!result.success) {
-                setTeams(originalTeams);
-                toast.error(result.error || t('error_deleting_team'));
-            }
+            await teamService.deleteTeam({ teamId });
         } catch (err) {
             setTeams(originalTeams);
             toast.error(handleError(err, t));
@@ -126,6 +115,9 @@ const TeamsSettings = () => {
                 break;
             case 'delete':
                 if (teamId) handleDeleteTeam(teamId);
+                break;
+            case 'members':
+                // No action needed, modal will show TeamMembers component
                 break;
         }
     };
@@ -153,6 +145,13 @@ const TeamsSettings = () => {
             confirmText: t("delete"),
             confirmVariant: "danger",
             handler: () => handleConfirmAction('delete'),
+        },
+        members: {
+            title: t("manage_team_members"),
+            body: team ? <TeamMembers teamId={team.$id} teamName={team.name} onClose={closeModal} /> : <div />,
+            confirmText: "",
+            confirmVariant: "primary",
+            handler: () => {},
         },
     };
 
@@ -189,6 +188,7 @@ const TeamsSettings = () => {
                                         <td>{teamItem.total}</td>
                                         <td>
                                             <Button variant="warning" size="sm" className="me-2" onClick={() => openModal('edit', teamItem)}>{t("edit")}</Button>
+                                            <Button variant="info" size="sm" className="me-2" onClick={() => openModal('members', teamItem)}>{t("members")}</Button>
                                             <Button variant="danger" size="sm" onClick={() => openModal('delete', teamItem)}>{t("delete")}</Button>
                                         </td>
                                     </tr>
@@ -200,7 +200,7 @@ const TeamsSettings = () => {
                     <ActionModal
                         show={!!type}
                         onClose={closeModal}
-                        config={type ? modalConfig[type] : null}
+                        config={type ? modalConfig[type] || null : null}
                     />
                 </Col>
             </Row>

@@ -21,6 +21,9 @@ const TeamsSettings = lazy(() => import('./components/settings/TeamsSettings'));
 const LanguageSettings = lazy(() => import('./components/settings/LanguageSettings'));
 const ThemeSettings = lazy(() => import('./components/settings/ThemeSettings'));
 
+// Lazy load team invitation component
+const TeamInvitation = lazy(() => import('./components/TeamInvitation'));
+
 // Debug component
 const UserDebug = lazy(() => import('./components/debug/UserDebug'));
 
@@ -53,6 +56,16 @@ function App() {
               <Routes>
                 <Route path="/signup" element={<Signup />} />
                 <Route path="/login" element={<Login />} />
+                
+                {/* Team invitation route - no authentication required */}
+                <Route 
+                  path="/team-invitation" 
+                  element={
+                    <Suspense fallback={<PageLoader />}>
+                      <TeamInvitation />
+                    </Suspense>
+                  } 
+                />
                 
                 <Route 
                   path="/dashboard" 

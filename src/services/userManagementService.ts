@@ -80,7 +80,22 @@ class UserManagementService {
         }
       }
 
-      const result = JSON.parse(execution.responseBody);
+      // Verificar que responseBody no esté vacío y sea JSON válido
+      if (!execution.responseBody || execution.responseBody.trim() === '') {
+        return { success: false, error: 'Empty response from function' };
+      }
+
+      let result;
+      try {
+        result = JSON.parse(execution.responseBody);
+      } catch (parseError) {
+        console.error('JSON parse error:', parseError);
+        console.error('Response body:', execution.responseBody);
+        return { 
+          success: false, 
+          error: `Invalid JSON response: ${parseError instanceof Error ? parseError.message : 'Unknown parse error'}` 
+        };
+      }
 
       if (result.success === false || result.error) {
         return { success: false, error: result.error || 'The function reported an error.' };
