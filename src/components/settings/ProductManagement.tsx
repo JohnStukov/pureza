@@ -1,13 +1,11 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Container, Form, Button, Row, Col, Table, FormSelect, Alert } from 'react-bootstrap';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Container, Form, Button, Row, Col, Alert } from 'react-bootstrap';
 import { useLanguage } from '../../context/LanguageContext';
 import { productService, Product, ProductCreatePayload, ProductUpdatePayload } from '../../services/productService';
 import { ActionModal, ModalConfig } from './ActionModal';
 import { handleError } from '../../utils/errorHandler';
-import LoadingSpinner from '../common/LoadingSpinner';
-import { usePagination } from '../../hooks/usePagination';
-import { useDebounce } from '../../hooks/useDebounce';
-import Pagination from '../common/Pagination';
+import { useOptimisticUpdate } from '../../hooks/useOptimisticUpdate';
+import DataTable, { Column } from '../common/DataTable';
 import toast from 'react-hot-toast';
 
 export type ProductModalType = 'create' | 'edit' | 'delete';
@@ -23,14 +21,32 @@ const ProductManagement = () => {
     const { t } = useLanguage();
     const [productsList, setProductsList] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [sortBy, setSortBy] = useState<'name' | 'price' | 'stock' | '$createdAt'>('$createdAt');
-    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
     const [modalState, setModalState] = useState<ModalState>({ type: null, product: null });
     const [formState, setFormState] = useState<Partial<ProductFormData>>({});
 
-    const debouncedSearchTerm = useDebounce(searchTerm, 300);
+    // Optimistic updates
+    const { optimisticUpdate: optimisticUpdateProduct } = useOptimisticUpdate<
+        Product,
+        ProductUpdatePayload
+    >(
+        productService.updateProduct,
+        {
+            successMessage: t('product_updated_success'),
+            errorMessage: t('error_updating_product')
+        }
+    );
+
+    const { optimisticUpdate: optimisticDeleteProduct } = useOptimisticUpdate<
+        Product,
+        string
+    >(
+        productService.deleteProduct,
+        {
+            successMessage: t('product_deleted_success'),
+            errorMessage: t('error_deleting_product')
+        }
+    );
 
     const fetchProducts = useCallback(async () => {
         setLoading(true);
@@ -71,33 +87,30 @@ const ProductManagement = () => {
     };
 
     const handleDeleteProduct = async (productId: string) => {
-        const originalProducts = productsList;
-        setProductsList(current => current.filter(p => p.$id !== productId));
+        const productToDelete = productsList.find(p => p.$id === productId);
+        if (!productToDelete) return;
+        
+        await optimisticDeleteProduct(
+            productId,
+            productToDelete,
+            (data) => setProductsList(current => current.filter(p => p.$id !== productId))
+        );
+        
         closeModal();
-        toast.success(t('product_deleted_success'));
-
-        try {
-            await productService.deleteProduct(productId);
-        } catch (err) {
-            toast.error(handleError(err, t));
-            setProductsList(originalProducts);
-        }
     };
 
     const handleUpdateProduct = async (productId: string, payload: Partial<ProductFormData>) => {
-        const originalProducts = [...productsList];
-        setProductsList(current => 
-            current.map(p => (p.$id === productId ? { ...p, ...payload } as Product : p))
+        const updatedProduct = { ...modalState.product!, ...payload } as Product;
+        
+        await optimisticUpdateProduct(
+            { productId, ...payload } as ProductUpdatePayload,
+            updatedProduct,
+            (data) => setProductsList(current => 
+                current.map(p => (p.$id === productId ? data : p))
+            )
         );
+        
         closeModal();
-        toast.success(t('product_updated_success'));
-
-        try {
-            await productService.updateProduct({ productId, ...payload });
-        } catch (err) {
-            toast.error(handleError(err, t));
-            setProductsList(originalProducts);
-        }
     };
 
     const handleCreateProduct = async (payload: ProductCreatePayload) => {
@@ -131,34 +144,32 @@ const ProductManagement = () => {
         }
     };
 
-    const filteredAndSortedProducts = useMemo(() => {
-        let filtered = productsList;
-        if (debouncedSearchTerm) {
-            filtered = filtered.filter(product =>
-                product.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-                product.description.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
-            );
-        }
-        filtered.sort((a, b) => {
-            const aVal = a[sortBy];
-            const bVal = b[sortBy];
-            if (typeof aVal === 'string' && typeof bVal === 'string') {
-                return sortOrder === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-            }
-            if (typeof aVal === 'number' && typeof bVal === 'number') {
-                return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
-            }
-            return 0;
-        });
-        return filtered;
-    }, [productsList, debouncedSearchTerm, sortBy, sortOrder]);
-
-    const { paginatedItems, totalPages, currentPage, goToPage, setItemsPerPage, itemsPerPage, paginationInfo } = usePagination(filteredAndSortedProducts, {
-        itemsPerPage: 10,
-        totalItems: filteredAndSortedProducts.length,
-    });
-
     const { type, product } = modalState;
+
+    // Define columns for DataTable
+    const columns: Column<Product>[] = [
+        {
+            key: 'name',
+            label: t("product_name"),
+            sortable: true
+        },
+        {
+            key: 'description',
+            label: t("product_description"),
+            sortable: true
+        },
+        {
+            key: 'price',
+            label: t("product_price"),
+            sortable: true,
+            render: (value: number) => `$${value.toFixed(2)}`
+        },
+        {
+            key: 'stock',
+            label: t("product_stock"),
+            sortable: true
+        }
+    ];
 
     const productForm = (
         <Form>
@@ -182,45 +193,33 @@ const ProductManagement = () => {
             <Row>
                 <Col>
                     <h3>{t("product_management")}</h3>
-                    <Row className="mb-3">
-                        <Col md={4}><Form.Control type="text" placeholder={t("search_products_placeholder")} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}/></Col>
-                        <Col md={2}><FormSelect value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}><option value="name">{t("sort_by_name")}</option><option value="price">{t("sort_by_price")}</option><option value="stock">{t("sort_by_stock")}</option><option value="$createdAt">{t("sort_by_date")}</option></FormSelect></Col>
-                        <Col md={2}><FormSelect value={sortOrder} onChange={(e) => setSortOrder(e.target.value as any)}><option value="asc">{t("ascending")}</option><option value="desc">{t("descending")}</option></FormSelect></Col>
-                        <Col md={2}><FormSelect value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))}><option value={5}>5 {t("per_page")}</option><option value={10}>10 {t("per_page")}</option><option value={25}>25 {t("per_page")}</option><option value={50}>50 {t("per_page")}</option></FormSelect></Col>
-                        <Col md={2}><Button variant="primary" onClick={() => openModal('create', null)} className="w-100">{t("add_product")}</Button></Col>
-                    </Row>
-
-                    {loading && <LoadingSpinner text={t("loading")} centered />}
                     
-                    {!loading && (
-                        <>
-                            {paginatedItems.length > 0 ? (
-                                <>
-                                    <Row className="mb-2"><Col><small style={{ color: 'var(--text-muted)' }}>{t("showing_results", {start: paginationInfo.startIndex + 1, end: paginationInfo.endIndex, total: filteredAndSortedProducts.length})}</small></Col></Row>
-                                    <Table striped bordered hover responsive>
-                                        <thead><tr><th>{t("product_name")}</th><th>{t("product_description")}</th><th>{t("product_price")}</th><th>{t("product_stock")}</th><th>{t("actions")}</th></tr></thead>
-                                        <tbody>
-                                            {paginatedItems.map((productItem) => (
-                                                <tr key={productItem.$id}>
-                                                    <td>{productItem.name}</td>
-                                                    <td>{productItem.description}</td>
-                                                    <td>${productItem.price.toFixed(2)}</td>
-                                                    <td>{productItem.stock}</td>
-                                                    <td>
-                                                        <Button variant="warning" size="sm" className="me-2" onClick={() => openModal('edit', productItem)}>{t("edit")}</Button>
-                                                        <Button variant="danger" size="sm" onClick={() => openModal('delete', productItem)}>{t("delete")}</Button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </Table>
-                                    {totalPages > 1 && <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={goToPage} />}
-                                </> 
-                            ) : (
-                                <Alert variant="info">{searchTerm ? t("no_products_found_search") : t("no_products_found")}</Alert>
-                            )}
-                        </>
-                    )}
+                    <DataTable
+                        data={productsList}
+                        columns={columns}
+                        loading={loading}
+                        searchable={true}
+                        searchPlaceholder={t("search_products_placeholder")}
+                        sortable={true}
+                        pagination={true}
+                        itemsPerPage={10}
+                        emptyMessage={t("no_products_found")}
+                        headerActions={
+                            <Button variant="primary" onClick={() => openModal('create', null)}>
+                                {t("add_product")}
+                            </Button>
+                        }
+                        actions={(productItem) => (
+                            <>
+                                <Button variant="warning" size="sm" className="me-2" onClick={() => openModal('edit', productItem)}>
+                                    {t("edit")}
+                                </Button>
+                                <Button variant="danger" size="sm" onClick={() => openModal('delete', productItem)}>
+                                    {t("delete")}
+                                </Button>
+                            </>
+                        )}
+                    />
 
                     <ActionModal
                         show={!!type}

@@ -7,6 +7,8 @@ import { userManagementService, AppwriteUser } from '../../services/userManageme
 import LoadingSpinner from '../common/LoadingSpinner';
 import { usePagination } from '../../hooks/usePagination';
 import { useDebounce } from '../../hooks/useDebounce';
+import { useModal } from '../../hooks/useModal';
+import { useOptimisticUpdate } from '../../hooks/useOptimisticUpdate';
 import Pagination from '../common/Pagination';
 import toast from 'react-hot-toast';
 
@@ -34,9 +36,47 @@ const UsersSettings = () => {
     // Debounce search term
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
-    const [modalState, setModalState] = useState<ModalState>({ type: null, user: null });
+    const { modalState, openModal, closeModal } = useModal<AppwriteUser>({
+        onOpen: (type, user) => {
+            if (type === 'create') {
+                setFormState({ email: '', name: '' });
+                setPassword('');
+            } else if (type === 'update' && user) {
+                setFormState({ email: user.email, name: user.name || '' });
+                setPassword('');
+            }
+        },
+        onClose: () => {
+            setFormState({ email: '', name: '' });
+            setPassword('');
+        }
+    });
+    
     const [formState, setFormState] = useState<UserFormState>({ email: '', name: '' });
     const [password, setPassword] = useState('');
+
+    // Optimistic updates
+    const { optimisticUpdate: optimisticDeleteUser } = useOptimisticUpdate<
+        AppwriteUser,
+        string
+    >(
+        (userId: string) => userManagementService.deleteUser(userId),
+        {
+            successMessage: t("user_deleted_success"),
+            errorMessage: t("error_deleting_user")
+        }
+    );
+
+    const { optimisticUpdate: optimisticUpdateUserStatus } = useOptimisticUpdate<
+        AppwriteUser,
+        { userId: string; status: boolean }
+    >(
+        ({ userId, status }) => userManagementService.updateUserStatus(userId, status),
+        {
+            successMessage: t("user_status_updated"),
+            errorMessage: t("error_updating_status")
+        }
+    );
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
@@ -65,64 +105,39 @@ const UsersSettings = () => {
         }
     };
 
-    const openModal = (type: UserModalType, user: AppwriteUser | null = null) => {
-        setModalState({ type, user });
-        if (type === 'create') {
-            setFormState({ email: '', name: '' });
-            setPassword('');
-        } else if (type === 'update' && user) {
-            setFormState({ email: user.email, name: user.name || '' });
-            setPassword('');
-        }
-    };
-
-    const closeModal = () => {
-        setModalState({ type: null, user: null });
-        setFormState({ email: '', name: '' });
-        setPassword('');
+    const handleOpenModal = (type: UserModalType, user?: AppwriteUser) => {
+        openModal(type, user);
     };
 
     const handleDeleteUser = async (userId: string) => {
-        const originalUsers = usersList;
-        setUsersList(currentUsers => currentUsers.filter(u => u.$id !== userId));
-        closeModal();
-        toast.success(t("user_deleted_success"));
+        const userToDelete = usersList.find(u => u.$id === userId);
+        if (!userToDelete) return;
 
-        try {
-            const result = await userManagementService.deleteUser(userId);
-            if (!result.success) {
-                toast.error(result.error || t("error_deleting_user"));
-                setUsersList(originalUsers);
-            }
-        } catch (err: any) {
-            toast.error(handleError(err, t));
-            setUsersList(originalUsers);
-        }
+        await optimisticDeleteUser(
+            userId,
+            userToDelete,
+            (data) => setUsersList(currentUsers => currentUsers.filter(u => u.$id !== userId))
+        );
+        
+        closeModal();
     };
 
     const handleUpdateUserStatus = async (userId: string, currentStatus: boolean) => {
-        const originalUsers = [...usersList];
         const newStatus = !currentStatus;
+        const userToUpdate = usersList.find(u => u.$id === userId);
+        if (!userToUpdate) return;
 
-        // Optimistic UI update
-        setUsersList(currentUsers =>
-            currentUsers.map(u => (u.$id === userId ? { ...u, status: newStatus } : u))
+        const updatedUser = { ...userToUpdate, status: newStatus };
+
+        await optimisticUpdateUserStatus(
+            { userId, status: newStatus },
+            updatedUser,
+            (data) => setUsersList(currentUsers =>
+                currentUsers.map(u => (u.$id === userId ? data : u))
+            )
         );
+        
         closeModal();
-        toast.success(t("user_status_updated"));
-
-        try {
-            const result = await userManagementService.updateUserStatus(userId, newStatus);
-            if (!result.success) {
-                // Revert on failure
-                toast.error(result.error || t("error_updating_status"));
-                setUsersList(originalUsers);
-            }
-        } catch (err: any) {
-            // Revert on any exception
-            toast.error(handleError(err, t));
-            setUsersList(originalUsers);
-        }
     };
 
     const handleConfirmAction = async (action: UserModalType, payload?: any) => {
@@ -230,7 +245,7 @@ const UsersSettings = () => {
         itemsPerPage: 10
     });
 
-    const { type, user } = modalState;
+    const { type, data: user } = modalState;
 
     const modalConfig: { [key in UserModalType]?: ModalConfig } = {
         create: {
@@ -349,7 +364,7 @@ const UsersSettings = () => {
                             </Form.Select>
                         </Col>
                         <Col md={2}>
-                            <Button variant="primary" onClick={() => openModal('create')} className="w-100">
+                            <Button variant="primary" onClick={() => handleOpenModal('create')} className="w-100">
                                 {t("create_user")}
                             </Button>
                         </Col>
@@ -386,14 +401,14 @@ const UsersSettings = () => {
                                             </Badge>
                                         </td>
                                         <td>
-                                            <Button variant="info" size="sm" className="me-2" onClick={() => openModal('update', user)}>{t("edit_user")}</Button>
-                                            <Button variant="danger" size="sm" className="me-2" onClick={() => openModal('delete', user)}>{t("delete_user")}</Button>
-                                            <Button variant={user.status ? "warning" : "success"} size="sm" className="me-2" onClick={() => openModal('updateStatus', user)}>
+                                            <Button variant="info" size="sm" className="me-2" onClick={() => handleOpenModal('update', user)}>{t("edit_user")}</Button>
+                                            <Button variant="danger" size="sm" className="me-2" onClick={() => handleOpenModal('delete', user)}>{t("delete_user")}</Button>
+                                            <Button variant={user.status ? "warning" : "success"} size="sm" className="me-2" onClick={() => handleOpenModal('updateStatus', user)}>
                                                 {user.status ? t("disable_user") : t("enable_user")}
                                             </Button>
-                                            <Button variant="secondary" size="sm" className="me-2" onClick={() => openModal('createPasswordRecovery', user)}>{t("send_recovery")}</Button>
+                                            <Button variant="secondary" size="sm" className="me-2" onClick={() => handleOpenModal('createPasswordRecovery', user)}>{t("send_recovery")}</Button>
                                             {!user.emailVerification && (
-                                                <Button variant="primary" size="sm" onClick={() => openModal('updateVerification', user)}>{t("mark_verified")}</Button>
+                                                <Button variant="primary" size="sm" onClick={() => handleOpenModal('updateVerification', user)}>{t("mark_verified")}</Button>
                                             )}
                                         </td>
                                     </tr>
@@ -432,9 +447,9 @@ const UsersSettings = () => {
                     )}
 
                     <ActionModal
-                        show={!!type}
+                        show={modalState.isOpen}
                         onClose={closeModal}
-                        config={type ? modalConfig[type] || null : null}
+                        config={type ? modalConfig[type as UserModalType] || null : null}
                     />
                 </Col>
             </Row>

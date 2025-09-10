@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Container, Row, Col, Button, Table, Form, Alert, Badge, Modal } from 'react-bootstrap';
+import { Container, Row, Col, Button, Alert, Badge } from 'react-bootstrap';
 import { useLanguage } from '../../context/LanguageContext';
 import { teamService } from '../../services/teamService';
 import { userManagementService, AppwriteUser } from '../../services/userManagementService';
 import { handleError } from '../../utils/errorHandler';
-import LoadingSpinner from '../common/LoadingSpinner';
+import DataTable, { Column } from '../common/DataTable';
+import Modal from '../common/Modal';
+import TeamMembersModal from '../common/TeamMembersModal';
+import UserSelectField from '../common/UserSelectField';
+import RoleSelectField from '../common/RoleSelectField';
+import { useModal } from '../../hooks/useModal';
 import toast from 'react-hot-toast';
 
 interface TeamMember {
@@ -27,9 +32,20 @@ const TeamMembers: React.FC<TeamMembersProps> = ({ teamId, teamName, onClose }) 
     const [members, setMembers] = useState<TeamMember[]>([]);
     const [availableUsers, setAvailableUsers] = useState<AppwriteUser[]>([]);
     const [loading, setLoading] = useState(true);
-    const [showAddModal, setShowAddModal] = useState(false);
     const [selectedUserId, setSelectedUserId] = useState('');
     const [selectedRoles, setSelectedRoles] = useState<string[]>(['member']);
+
+    // Modal management
+    const { modalState, openModal, closeModal } = useModal({
+        onOpen: () => {
+            setSelectedUserId('');
+            setSelectedRoles(['member']);
+        },
+        onClose: () => {
+            setSelectedUserId('');
+            setSelectedRoles(['member']);
+        }
+    });
 
     const fetchMembers = useCallback(async () => {
         setLoading(true);
@@ -72,10 +88,10 @@ const TeamMembers: React.FC<TeamMembersProps> = ({ teamId, teamName, onClose }) 
     }, [fetchAvailableUsers]);
 
     useEffect(() => {
-        if (showAddModal) {
+        if (modalState.isOpen) {
             fetchAvailableUsers();
         }
-    }, [showAddModal, fetchAvailableUsers]);
+    }, [modalState.isOpen, fetchAvailableUsers]);
 
     const handleAddMember = async () => {
         if (!selectedUserId) {
@@ -98,9 +114,7 @@ const TeamMembers: React.FC<TeamMembersProps> = ({ teamId, teamName, onClose }) 
             });
             
             toast.success(t('member_added_successfully'));
-            setShowAddModal(false);
-            setSelectedUserId('');
-            setSelectedRoles(['member']);
+            closeModal();
             fetchMembers();
         } catch (error: any) {
             toast.error(handleError(error, t));
@@ -157,138 +171,146 @@ const TeamMembers: React.FC<TeamMembersProps> = ({ teamId, teamName, onClose }) 
         }
     };
 
-    if (loading) {
-        return <LoadingSpinner text={t('loading_members')} centered />;
-    }
+    const formatDate = (dateString: string) => {
+        try {
+            const date = new Date(dateString);
+            if (isNaN(date.getTime())) {
+                return t('invalid_date');
+            }
+            return date.toLocaleDateString('es-ES', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+        } catch {
+            return t('invalid_date');
+        }
+    };
+
+    // Define columns for DataTable
+    const columns: Column<TeamMember>[] = [
+        {
+            key: 'userName',
+            label: t('user_name'),
+            sortable: true
+        },
+        {
+            key: 'userEmail',
+            label: t('email'),
+            sortable: true
+        },
+        {
+            key: 'roles',
+            label: t('roles'),
+            render: (roles: string[]) => (
+                <>
+                    {roles.map(role => (
+                        <Badge 
+                            key={role} 
+                            bg={getRoleBadgeVariant(role)} 
+                            className="me-1"
+                        >
+                            {role}
+                        </Badge>
+                    ))}
+                </>
+            )
+        },
+        {
+            key: 'joinedAt',
+            label: t('joined_at'),
+            sortable: true,
+            render: (date: string) => formatDate(date)
+        }
+    ];
 
     return (
         <Container fluid>
-            <Row className="mb-3">
-                <Col>
-                    <h4>{t('team_members')}: {teamName}</h4>
+            <div className="mb-4">
+                <div className="d-flex justify-content-between align-items-center mb-3">
                     <div className="d-flex align-items-center gap-3">
-                        <Button 
-                            variant="primary" 
-                            onClick={() => setShowAddModal(true)}
-                            disabled={availableUsers.length === 0}
-                        >
-                            {t('add_member')}
-                        </Button>
-                        {availableUsers.length > 0 && (
-                            <small className="text-muted">
-                                {availableUsers.length} {t('users_available_to_add')}
-                            </small>
-                        )}
-                        {availableUsers.length === 0 && (
-                            <small className="text-muted">
-                                {t('no_users_available_to_add')}
-                            </small>
+                        {availableUsers.length > 0 ? (
+                            <div className="d-flex align-items-center gap-2">
+                                <i className="fas fa-info-circle text-info"></i>
+                                <small className="text-muted">
+                                    {availableUsers.length} {t('users_available_to_add')}
+                                </small>
+                            </div>
+                        ) : (
+                            <div className="d-flex align-items-center gap-2">
+                                <i className="fas fa-exclamation-triangle text-warning"></i>
+                                <small className="text-muted">
+                                    {t('no_users_available_to_add')}
+                                </small>
+                            </div>
                         )}
                     </div>
-                </Col>
-            </Row>
-
-            {members.length === 0 ? (
-                <Alert variant="info">
-                    {t('no_members_in_team')}
-                </Alert>
-            ) : (
-                <Table striped bordered hover responsive>
-                    <thead>
-                        <tr>
-                            <th>{t('user_name')}</th>
-                            <th>{t('email')}</th>
-                            <th>{t('roles')}</th>
-                            <th>{t('joined_at')}</th>
-                            <th>{t('actions')}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {members.map((member) => (
-                            <tr key={member.$id}>
-                                <td>{member.userName}</td>
-                                <td>{member.userEmail}</td>
-                                <td>
-                                    {member.roles.map(role => (
-                                        <Badge 
-                                            key={role} 
-                                            bg={getRoleBadgeVariant(role)} 
-                                            className="me-1"
-                                        >
-                                            {role}
-                                        </Badge>
-                                    ))}
-                                </td>
-                                <td>{new Date(member.joinedAt).toLocaleDateString()}</td>
-                                <td>
-                                    <Button 
-                                        variant="danger" 
-                                        size="sm"
-                                        onClick={() => handleRemoveMember(member.$id, member.userName)}
-                                    >
-                                        {t('remove')}
-                                    </Button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </Table>
-            )}
-
-            {/* Modal para agregar miembro */}
-            <Modal show={showAddModal} onHide={() => setShowAddModal(false)}>
-                <Modal.Header closeButton>
-                    <Modal.Title>{t('add_member_to_team')}</Modal.Title>
-                </Modal.Header>
-                <Modal.Body>
-                    <Form.Group className="mb-3">
-                        <Form.Label>{t('select_user')}</Form.Label>
-                        <Form.Select 
-                            value={selectedUserId} 
-                            onChange={(e) => setSelectedUserId(e.target.value)}
-                        >
-                            <option value="">{t('choose_user')}</option>
-                            {availableUsers.map(user => (
-                                <option key={user.$id} value={user.$id}>
-                                    {user.name} ({user.email})
-                                </option>
-                            ))}
-                        </Form.Select>
-                    </Form.Group>
-
-                    <Form.Group className="mb-3">
-                        <Form.Label>{t('roles')}</Form.Label>
-                        <div>
-                            {['member', 'admin', 'owner'].map(role => (
-                                <Form.Check
-                                    key={role}
-                                    type="checkbox"
-                                    id={`role-${role}`}
-                                    label={t(role)}
-                                    checked={selectedRoles.includes(role)}
-                                    onChange={() => toggleRole(role)}
-                                />
-                            ))}
-                        </div>
-                    </Form.Group>
-                </Modal.Body>
-                <Modal.Footer>
-                    <Button variant="secondary" onClick={() => setShowAddModal(false)}>
-                        {t('cancel')}
-                    </Button>
-                    <Button variant="primary" onClick={handleAddMember}>
+                    <Button 
+                        variant="primary" 
+                        onClick={() => openModal('add')}
+                        disabled={availableUsers.length === 0}
+                        className="d-flex align-items-center gap-2"
+                    >
+                        <i className="fas fa-plus"></i>
                         {t('add_member')}
                     </Button>
-                </Modal.Footer>
-            </Modal>
+                </div>
+            </div>
 
-            <Row className="mt-3">
-                <Col>
-                    <Button variant="secondary" onClick={onClose}>
-                        {t('close')}
+            <DataTable
+                data={members}
+                columns={columns}
+                loading={loading}
+                searchable={true}
+                searchPlaceholder={t('search_members_placeholder')}
+                sortable={true}
+                pagination={true}
+                itemsPerPage={10}
+                emptyMessage={t('no_members_in_team')}
+                actions={(member) => (
+                    <Button 
+                        variant="outline-danger" 
+                        size="sm"
+                        onClick={() => handleRemoveMember(member.$id, member.userName)}
+                        className="d-flex align-items-center gap-1"
+                    >
+                        <i className="fas fa-user-minus"></i>
+                        {t('remove')}
                     </Button>
-                </Col>
-            </Row>
+                )}
+            />
+
+            {/* Modal para agregar miembro */}
+            <Modal 
+                show={modalState.isOpen} 
+                onHide={closeModal}
+                title={t('add_member_to_team')}
+                size="lg"
+                scrollable={true}
+                onConfirm={handleAddMember}
+                confirmText={t('add_member')}
+                cancelText={t('cancel')}
+            >
+                <div className="mb-3">
+                    <UserSelectField
+                        users={availableUsers}
+                        value={selectedUserId}
+                        onChange={setSelectedUserId}
+                        placeholder={t('choose_user')}
+                        label={t('select_user')}
+                        required
+                    />
+                </div>
+
+                <div className="mb-3">
+                    <RoleSelectField
+                        roles={['member', 'admin', 'owner']}
+                        selectedRoles={selectedRoles}
+                        onRoleToggle={toggleRole}
+                        label={t('roles')}
+                    />
+                </div>
+            </Modal>
         </Container>
     );
 };

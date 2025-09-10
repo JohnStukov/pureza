@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../../context/LanguageContext';
 import { teamService } from '../../services/teamService';
-import { Button, Table, Form, Alert, Container, Row, Col } from 'react-bootstrap';
+import { Button, Form, Alert, Container, Row, Col } from 'react-bootstrap';
 import { ActionModal, ModalConfig } from './ActionModal';
 import { handleError } from '../../utils/errorHandler';
+import { useOptimisticUpdate } from '../../hooks/useOptimisticUpdate';
 import toast from 'react-hot-toast';
-import LoadingSpinner from '../common/LoadingSpinner';
+import DataTable, { Column } from '../common/DataTable';
 import TeamMembers from './TeamMembers';
 
 interface Team {
@@ -23,11 +25,35 @@ export interface ModalState {
 
 const TeamsSettings = () => {
     const { t } = useLanguage();
+    const navigate = useNavigate();
     const [teams, setTeams] = useState<Team[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
 
     const [modalState, setModalState] = useState<ModalState>({ type: null, team: null });
     const [teamName, setTeamName] = useState<string>('');
+
+    // Optimistic updates
+    const { optimisticUpdate: optimisticUpdateTeam } = useOptimisticUpdate<
+        Team,
+        { teamId: string; name: string }
+    >(
+        teamService.updateTeam,
+        {
+            successMessage: t('team_updated_success'),
+            errorMessage: t('error_updating_team')
+        }
+    );
+
+    const { optimisticUpdate: optimisticDeleteTeam } = useOptimisticUpdate<
+        Team,
+        { teamId: string }
+    >(
+        teamService.deleteTeam,
+        {
+            successMessage: t('team_deleted_success'),
+            errorMessage: t('error_deleting_team')
+        }
+    );
 
     const fetchTeams = useCallback(async () => {
         setLoading(true);
@@ -46,6 +72,14 @@ const TeamsSettings = () => {
     }, [fetchTeams]);
 
     const openModal = (type: TeamModalType, team: Team | null = null) => {
+        if (type === 'members' && team) {
+            // Navigate to team members page instead of opening modal
+            navigate(`/team-members/${team.$id}`, { 
+                state: { teamName: team.name } 
+            });
+            return;
+        }
+        
         setModalState({ type, team });
         if (type === 'create') {
             setTeamName('');
@@ -73,33 +107,28 @@ const TeamsSettings = () => {
     };
 
     const handleUpdateTeam = async (teamId: string) => {
-        const originalTeams = [...teams];
         const updatedTeam = { ...modalState.team!, name: teamName };
-
-        setTeams(current => current.map(t => (t.$id === teamId ? updatedTeam : t)));
+        
+        await optimisticUpdateTeam(
+            { teamId, name: teamName },
+            updatedTeam,
+            (data) => setTeams(current => current.map(t => (t.$id === teamId ? data : t)))
+        );
+        
         closeModal();
-        toast.success(t('team_updated_success'));
-
-        try {
-            await teamService.updateTeam({ teamId, name: teamName });
-        } catch (err) {
-            setTeams(originalTeams);
-            toast.error(handleError(err, t));
-        }
     };
 
     const handleDeleteTeam = async (teamId: string) => {
-        const originalTeams = teams;
-        setTeams(current => current.filter(t => t.$id !== teamId));
+        const teamToDelete = teams.find(t => t.$id === teamId);
+        if (!teamToDelete) return;
+        
+        await optimisticDeleteTeam(
+            { teamId },
+            teamToDelete,
+            (data) => setTeams(current => current.filter(t => t.$id !== teamId))
+        );
+        
         closeModal();
-        toast.success(t('team_deleted_success'));
-
-        try {
-            await teamService.deleteTeam({ teamId });
-        } catch (err) {
-            setTeams(originalTeams);
-            toast.error(handleError(err, t));
-        }
     };
 
     const handleConfirmAction = (action: TeamModalType) => {
@@ -124,6 +153,21 @@ const TeamsSettings = () => {
 
     const { type, team } = modalState;
 
+    // Define columns for DataTable
+    const columns: Column<Team>[] = [
+        {
+            key: 'name',
+            label: t("team_name"),
+            sortable: true
+        },
+        {
+            key: 'total',
+            label: t("team_members"),
+            sortable: true,
+            render: (value) => value || 0
+        }
+    ];
+
     const modalConfig: { [key in TeamModalType]?: ModalConfig } = {
         create: {
             title: t("create_team"),
@@ -146,13 +190,6 @@ const TeamsSettings = () => {
             confirmVariant: "danger",
             handler: () => handleConfirmAction('delete'),
         },
-        members: {
-            title: t("manage_team_members"),
-            body: team ? <TeamMembers teamId={team.$id} teamName={team.name} onClose={closeModal} /> : <div />,
-            confirmText: "",
-            confirmVariant: "primary",
-            handler: () => {},
-        },
     };
 
     return (
@@ -162,40 +199,35 @@ const TeamsSettings = () => {
                     <h3>{t("teams_settings_title")}</h3>
                     <p>{t("teams_settings_description")}</p>
 
-                    <Button onClick={() => openModal('create')} className="mb-3">
-                        {t("create_team")}
-                    </Button>
-
-                    {loading && <LoadingSpinner text={t("loading")} centered />}
-
-                    {!loading && teams.length === 0 && (
-                        <Alert variant="info">{t("no_teams_found")}</Alert>
-                    )}
-
-                    {!loading && teams.length > 0 && (
-                        <Table striped bordered hover responsive>
-                            <thead>
-                                <tr>
-                                    <th>{t("team_name")}</th>
-                                    <th>{t("team_members")}</th>
-                                    <th>{t("actions")}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {teams.map((teamItem) => (
-                                    <tr key={teamItem.$id}>
-                                        <td>{teamItem.name}</td>
-                                        <td>{teamItem.total}</td>
-                                        <td>
-                                            <Button variant="warning" size="sm" className="me-2" onClick={() => openModal('edit', teamItem)}>{t("edit")}</Button>
-                                            <Button variant="info" size="sm" className="me-2" onClick={() => openModal('members', teamItem)}>{t("members")}</Button>
-                                            <Button variant="danger" size="sm" onClick={() => openModal('delete', teamItem)}>{t("delete")}</Button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </Table>
-                    )}
+                    <DataTable
+                        data={teams}
+                        columns={columns}
+                        loading={loading}
+                        searchable={true}
+                        searchPlaceholder={t("search_teams_placeholder")}
+                        sortable={true}
+                        pagination={true}
+                        itemsPerPage={10}
+                        emptyMessage={t("no_teams_found")}
+                        headerActions={
+                            <Button onClick={() => openModal('create')} variant="primary">
+                                {t("create_team")}
+                            </Button>
+                        }
+                        actions={(teamItem) => (
+                            <>
+                                <Button variant="warning" size="sm" className="me-2" onClick={() => openModal('edit', teamItem)}>
+                                    {t("edit")}
+                                </Button>
+                                <Button variant="info" size="sm" className="me-2" onClick={() => openModal('members', teamItem)}>
+                                    {t("members")}
+                                </Button>
+                                <Button variant="danger" size="sm" onClick={() => openModal('delete', teamItem)}>
+                                    {t("delete")}
+                                </Button>
+                            </>
+                        )}
+                    />
 
                     <ActionModal
                         show={!!type}

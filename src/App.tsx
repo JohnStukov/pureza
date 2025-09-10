@@ -18,6 +18,7 @@ const AppNavbar = lazy(() => import('./components/Navbar'));
 const ProductManagement = lazy(() => import('./components/settings/ProductManagement'));
 const UsersSettings = lazy(() => import('./components/settings/UsersSettings'));
 const TeamsSettings = lazy(() => import('./components/settings/TeamsSettings'));
+const TeamMembersPage = lazy(() => import('./components/pages/TeamMembersPage'));
 const LanguageSettings = lazy(() => import('./components/settings/LanguageSettings'));
 const ThemeSettings = lazy(() => import('./components/settings/ThemeSettings'));
 
@@ -74,6 +75,18 @@ function App() {
                       <AuthenticatedLayout>
                         <Suspense fallback={<PageLoader />}>
                           <Dashboard />
+                        </Suspense>
+                      </AuthenticatedLayout>
+                    </PrivateRoute>
+                  }
+                />
+                <Route 
+                  path="/team-members/:teamId" 
+                  element={
+                    <PrivateRoute>
+                      <AuthenticatedLayout>
+                        <Suspense fallback={<PageLoader />}>
+                          <TeamMembersPage />
                         </Suspense>
                       </AuthenticatedLayout>
                     </PrivateRoute>

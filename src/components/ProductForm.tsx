@@ -1,45 +1,56 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Container, Form, Button, Card, Alert, Row, Col } from 'react-bootstrap';
 import { databases } from '../utils/appwrite'; // Import databases service
 import { ID } from 'appwrite';
 import { useLanguage } from '../context/LanguageContext';
 import { handleError } from '../utils/errorHandler';
+import { useFormField } from '../hooks/useFormField';
+import { validationRules } from '../utils/validation';
+import FormField from './common/FormField';
+import LoadingSpinner from './common/LoadingSpinner';
 
 const ProductForm = () => {
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [price, setPrice] = useState('');
-    const [stock, setStock] = useState('');
-    const [message, setMessage] = useState('');
-    const [error, setError] = useState('');
     const { t } = useLanguage();
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setMessage('');
-        setError('');
-
-        try {
-            await databases.createDocument(
-                process.env.REACT_APP_APPWRITE_DATABASE_ID!,
-                process.env.REACT_APP_APPWRITE_PRODUCTS_COLLECTION_ID!,
-                ID.unique(), // Document ID
-                {
-                    name,
-                    description,
-                    price: parseFloat(price),
-                    stock: parseInt(stock),
-                }
-            );
-            setMessage(t('product_saved_success'));
-            setName('');
-            setDescription('');
-            setPrice('');
-            setStock('');
-        } catch (err: any) {
-            setError(handleError(err, t));
+    const { 
+        isSubmitting, 
+        submitError, 
+        handleSubmit, 
+        createFieldProps,
+        resetForm 
+    } = useFormField({
+        initialValues: { name: '', description: '', price: '', stock: '' },
+        validationRules: {
+            name: validationRules.name,
+            description: { required: false },
+            price: { required: true, min: 0 },
+            stock: { required: true, min: 0 }
+        },
+        onSubmit: async (values) => {
+            try {
+                await databases.createDocument(
+                    process.env.REACT_APP_APPWRITE_DATABASE_ID!,
+                    process.env.REACT_APP_APPWRITE_PRODUCTS_COLLECTION_ID!,
+                    ID.unique(),
+                    {
+                        name: values.name,
+                        description: values.description,
+                        price: parseFloat(values.price),
+                        stock: parseInt(values.stock),
+                    }
+                );
+                resetForm();
+                // Show success message (you might want to use toast here)
+            } catch (err: any) {
+                throw new Error(handleError(err, t));
+            }
         }
-    };
+    });
+
+    const nameProps = createFieldProps('name');
+    const descriptionProps = createFieldProps('description');
+    const priceProps = createFieldProps('price');
+    const stockProps = createFieldProps('stock');
 
     return (
         <Container className="d-flex align-items-center justify-content-center" style={{ minHeight: "100vh" }}>
@@ -48,52 +59,49 @@ const ProductForm = () => {
                     <Card>
                         <Card.Body>
                             <h2 className="text-center mb-4">{t("add_new_product")}</h2>
-                            {message && <Alert variant="success">{message}</Alert>}
-                            {error && <Alert variant="danger">{error}</Alert>}
+                            {submitError && <Alert variant="danger">{submitError}</Alert>}
                             <Form onSubmit={handleSubmit}>
-                                <Form.Group className="mb-3" controlId="productName">
-                                    <Form.Label>{t("product_name")}</Form.Label>
-                                    <Form.Control
-                                        type="text"
-                                        value={name}
-                                        onChange={(e) => setName(e.target.value)}
-                                        required
-                                    />
-                                </Form.Group>
+                                <FormField
+                                    label={t("product_name")}
+                                    type="text"
+                                    required
+                                    {...nameProps}
+                                />
 
-                                <Form.Group className="mb-3" controlId="productDescription">
-                                    <Form.Label>{t("product_description")}</Form.Label>
-                                    <Form.Control
-                                        as="textarea"
-                                        rows={3}
-                                        value={description}
-                                        onChange={(e) => setDescription(e.target.value)}
-                                    />
-                                </Form.Group>
+                                <FormField
+                                    label={t("product_description")}
+                                    type="textarea"
+                                    rows={3}
+                                    {...descriptionProps}
+                                />
 
-                                <Form.Group className="mb-3" controlId="productPrice">
-                                    <Form.Label>{t("product_price")}</Form.Label>
-                                    <Form.Control
-                                        type="number"
-                                        step="0.01"
-                                        value={price}
-                                        onChange={(e) => setPrice(e.target.value)}
-                                        required
-                                    />
-                                </Form.Group>
+                                <FormField
+                                    label={t("product_price")}
+                                    type="number"
+                                    step="0.01"
+                                    min={0}
+                                    required
+                                    {...priceProps}
+                                />
 
-                                <Form.Group className="mb-3" controlId="productStock">
-                                    <Form.Label>{t("product_stock")}</Form.Label>
-                                    <Form.Control
-                                        type="number"
-                                        value={stock}
-                                        onChange={(e) => setStock(e.target.value)}
-                                        required
-                                    />
-                                </Form.Group>
+                                <FormField
+                                    label={t("product_stock")}
+                                    type="number"
+                                    min={0}
+                                    required
+                                    {...stockProps}
+                                />
 
-                                <Button className="w-100 mt-3" type="submit">
-                                    {t("save_product")}
+                                <Button 
+                                    className="w-100 mt-3" 
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                >
+                                    {isSubmitting ? (
+                                        <LoadingSpinner size="sm" text={t("saving")} />
+                                    ) : (
+                                        t("save_product")
+                                    )}
                                 </Button>
                             </Form>
                         </Card.Body>
